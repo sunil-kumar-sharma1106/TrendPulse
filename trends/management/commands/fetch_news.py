@@ -11,26 +11,58 @@ from trends.models import TrendingTopic
 
 
 RSS_FEEDS = [
-    ("India", "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml"),
-    ("World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
-    ("Technology", "https://feeds.bbci.co.uk/news/technology/rss.xml"),
-    ("Business", "https://feeds.bbci.co.uk/news/business/rss.xml"),
-    ("Sports", "https://feeds.bbci.co.uk/sport/rss.xml"),
+    (
+        "India",
+        "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml",
+    ),
+    (
+        "World",
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+    ),
+    (
+        "Technology",
+        "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    ),
+    (
+        "Business",
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+    ),
+    (
+        "Sports",
+        "https://feeds.bbci.co.uk/sport/rss.xml",
+    ),
 ]
 
 
 def upgrade_image_url(url):
     """Request a larger BBC image where supported."""
+
     if not url:
         return ""
 
     url = url.strip()
 
-    # Request a higher-resolution BBC image.
+    # BBC Image Chef:
+    # /images/ic/240x135/p0xxxxxx.jpg
+    # -> /images/ic/1200x675/p0xxxxxx.jpg
     url = re.sub(
-        r"(/ace/(?:standard|ws)/)\d+/",
-        r"\g<1>1200/",
+        r"/images/ic/\d+x\d+/",
+        "/images/ic/1200x675/",
         url,
+        flags=re.IGNORECASE,
+    )
+
+    # BBC ACE images:
+    # /ace/standard/240/
+    # /ace/standard/1200/
+    #
+    # /ace/ws/240/
+    # /ace/ws/1200/
+    url = re.sub(
+        r"/ace/(standard|ws)/\d+/",
+        r"/ace/\1/1200/",
+        url,
+        flags=re.IGNORECASE,
     )
 
     return url
@@ -42,12 +74,14 @@ def extract_image_url(entry):
     # 1. RSS media:content
     for media in entry.get("media_content", []):
         url = media.get("url", "").strip()
+
         if url.startswith(("https://", "http://")):
             return url
 
     # 2. RSS media:thumbnail
     for media in entry.get("media_thumbnail", []):
         url = media.get("url", "").strip()
+
         if url.startswith(("https://", "http://")):
             return url
 
@@ -59,7 +93,7 @@ def extract_image_url(entry):
         if url.startswith(("https://", "http://")) and (
             mime_type.startswith("image/")
             or re.search(
-                r"\.(jpg|jpeg|png|webp|gif)(\?|$)",
+                r"\.(jpg|jpeg|png|webp|gif)(\?.*)?$",
                 url,
                 re.IGNORECASE,
             )
@@ -98,7 +132,9 @@ class Command(BaseCommand):
         total_updated = 0
 
         for category, feed_url in RSS_FEEDS:
-            self.stdout.write(f"Fetching {category} news...")
+            self.stdout.write(
+                f"Fetching {category} news..."
+            )
 
             try:
                 feed = feedparser.parse(feed_url)
@@ -116,8 +152,9 @@ class Command(BaseCommand):
                     summary = entry.get("summary", "").strip()
                     source_url = entry.get("link", "").strip()
 
+                    raw_image_url = extract_image_url(entry)
                     image_url = upgrade_image_url(
-                        extract_image_url(entry)
+                        raw_image_url
                     )
 
                     if not title or not source_url:
@@ -128,9 +165,14 @@ class Command(BaseCommand):
                     ).first()
 
                     if topic:
-                        if image_url and image_url != topic.image_url:
+                        if (
+                            image_url
+                            and image_url != topic.image_url
+                        ):
                             topic.image_url = image_url[:1000]
-                            topic.save(update_fields=["image_url"])
+                            topic.save(
+                                update_fields=["image_url"]
+                            )
                             total_updated += 1
 
                         continue
@@ -138,16 +180,23 @@ class Command(BaseCommand):
                     summary = strip_tags(summary).strip()
 
                     if not summary:
-                        summary = f"Read the original report: {title}"
+                        summary = (
+                            f"Read the original report: {title}"
+                        )
 
-                    base_slug = slugify(title)[:200] or "news"
+                    base_slug = (
+                        slugify(title)[:200] or "news"
+                    )
+
                     slug = base_slug
                     number = 2
 
                     while TrendingTopic.objects.filter(
                         slug=slug
                     ).exists():
-                        slug = f"{base_slug[:190]}-{number}"
+                        slug = (
+                            f"{base_slug[:190]}-{number}"
+                        )
                         number += 1
 
                     TrendingTopic.objects.create(
@@ -173,6 +222,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Finished! Added {total_saved} new articles. "
-                f"Updated images for {total_updated} existing articles."
+                f"Updated images for {total_updated} "
+                f"existing articles."
             )
         )
