@@ -18,7 +18,7 @@ RSS_FEEDS = [
 ]
 
 
-def extract_image_url(entry):
+image_url = upgrade_image_url(extract_image_url(entry))
     """Extract an image URL from common RSS image fields."""
     def upgrade_image_url(url):
     """Request a higher-resolution BBC image when available."""
