@@ -20,6 +20,35 @@ RSS_FEEDS = [
 
 def extract_image_url(entry):
     """Extract an image URL from common RSS image fields."""
+    def upgrade_image_url(url):
+    """Request a higher-resolution BBC image when available."""
+    if not url:
+        return ""
+
+    url = url.strip()
+
+    # Upgrade BBC image URLs to a larger resolution.
+    url = re.sub(
+        r"/ace/standard/\d+/",
+        "/ace/standard/1024/",
+        url,
+    )
+
+    return urldef upgrade_image_url(url):
+    """Request a higher-resolution BBC image when available."""
+    if not url:
+        return ""
+
+    url = url.strip()
+
+    # Upgrade BBC image URLs to a larger resolution.
+    url = re.sub(
+        r"/ace/standard/\d+/",
+        "/ace/standard/1024/",
+        url,
+    )
+
+    return url
 
     # 1. RSS media:content
     for media in entry.get("media_content", []):
@@ -93,7 +122,7 @@ class Command(BaseCommand):
                     title = entry.get("title", "").strip()
                     summary = entry.get("summary", "").strip()
                     source_url = entry.get("link", "").strip()
-                    image_url = extract_image_url(entry)
+                    image_url = upgrade_image_url(extract_image_url(entry))
 
                     if not title or not source_url:
                         continue
@@ -104,7 +133,7 @@ class Command(BaseCommand):
                     ).first()
 
                     if topic:
-                        if image_url and not topic.image_url:
+                        if image_url and image_url != topic.image_url:
                             topic.image_url = image_url[:1000]
                             topic.save(update_fields=["image_url"])
                             total_updated += 1
