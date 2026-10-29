@@ -1,9 +1,10 @@
+
 import re
 import feedparser
 
+from html import unescape
 from django.core.management.base import BaseCommand
 from django.utils.html import strip_tags
-from html import unescape
 from django.utils.text import slugify
 
 from trends.models import TrendingTopic
@@ -18,37 +19,25 @@ RSS_FEEDS = [
 ]
 
 
-image_url = upgrade_image_url(extract_image_url(entry))
-    """Extract an image URL from common RSS image fields."""
-    def upgrade_image_url(url):
-    """Request a higher-resolution BBC image when available."""
+def upgrade_image_url(url):
+    """Request a larger BBC image where supported."""
     if not url:
         return ""
 
     url = url.strip()
 
-    # Upgrade BBC image URLs to a larger resolution.
+    # Request a higher-resolution BBC image.
     url = re.sub(
-        r"/ace/standard/\d+/",
-        "/ace/standard/1024/",
-        url,
-    )
-
-    return urldef upgrade_image_url(url):
-    """Request a higher-resolution BBC image when available."""
-    if not url:
-        return ""
-
-    url = url.strip()
-
-    # Upgrade BBC image URLs to a larger resolution.
-    url = re.sub(
-        r"/ace/standard/\d+/",
-        "/ace/standard/1024/",
+        r"(/ace/(?:standard|ws)/)\d+/",
+        r"\g<1>1200/",
         url,
     )
 
     return url
+
+
+def extract_image_url(entry):
+    """Extract an image URL from common RSS image fields."""
 
     # 1. RSS media:content
     for media in entry.get("media_content", []):
@@ -68,12 +57,16 @@ image_url = upgrade_image_url(extract_image_url(entry))
         mime_type = enclosure.get("type", "")
 
         if url.startswith(("https://", "http://")) and (
-            mime_type.startswith("image/") or
-            re.search(r"\.(jpg|jpeg|png|webp|gif)(\?|$)", url, re.I)
+            mime_type.startswith("image/")
+            or re.search(
+                r"\.(jpg|jpeg|png|webp|gif)(\?|$)",
+                url,
+                re.IGNORECASE,
+            )
         ):
             return url
 
-    # 4. Image links included in RSS content or summary HTML
+    # 4. Images inside RSS content or summary HTML
     html_parts = []
 
     for content in entry.get("content", []):
@@ -83,7 +76,7 @@ image_url = upgrade_image_url(extract_image_url(entry))
 
     for html in html_parts:
         match = re.search(
-            r'<img[^>]+src=["\']([^"\']+)["\']',
+            r"""<img[^>]+src=["']([^"']+)["']""",
             html,
             re.IGNORECASE,
         )
@@ -122,12 +115,14 @@ class Command(BaseCommand):
                     title = entry.get("title", "").strip()
                     summary = entry.get("summary", "").strip()
                     source_url = entry.get("link", "").strip()
-                    image_url = upgrade_image_url(extract_image_url(entry))
+
+                    image_url = upgrade_image_url(
+                        extract_image_url(entry)
+                    )
 
                     if not title or not source_url:
                         continue
 
-                    # Update an existing article if its image is missing.
                     topic = TrendingTopic.objects.filter(
                         source_url=source_url
                     ).first()
@@ -137,6 +132,7 @@ class Command(BaseCommand):
                             topic.image_url = image_url[:1000]
                             topic.save(update_fields=["image_url"])
                             total_updated += 1
+
                         continue
 
                     summary = strip_tags(summary).strip()
